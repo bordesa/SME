@@ -17,13 +17,14 @@ r_vecs=embeddings[2].E.get_value()
 a=cPickle.load(open('../data/WN_idx2synset.pkl'))
 b=cPickle.load(open('../data/WN_synset2concept.pkl'))
 
+nbrel=18
 new_E={}
-for i in range(len(ents[0])-18):
+for i in range(len(ents[0])-nbrel):
 	new_E[b[a[i]]]=ents[:,i]
 
 new_R={}
 for i in range(18):
-	new_R[a[i+len(ents[0])-18]]=[r_mats[:,i],r_vecs[:,i]]
+	new_R[a[i+len(ents[0])-nbrel]]=[r_mats[:,i],r_vecs[:,i]]
 
 
 #cPickle.dump([new_E,new_R],open('essai_data.pkl','w'))
@@ -38,5 +39,14 @@ def closest(entity, k=10, rel=None, repeat=1):
 
 def find_entity(name):
 	return [e for e in new_E if "__%s_"%name in e]
+
+def rank_relations(k=nbrel):
+	diags = sorted((np.sum(np.abs(v[0]-1)), e) for e,v in new_R.iteritems())[::-1]
+	print "Top-{} by ||D-1||".format(k)
+	print '\n'.join(["{}: {}".format(e,norm) for norm, e in diags[:k]])
+	vects = sorted((np.sum(np.abs(v[1])), e) for e,v in new_R.iteritems())[::-1]
+	print "\nTop-{} by ||T||".format(k)
+	print'\n'.join(["{}: {}".format(e,norm) for norm, e in vects[:k]])
+
 
 
