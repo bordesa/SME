@@ -4,39 +4,43 @@ from mymodel import *
 
 
 # Utils ----------------------------------------------------------------------
-def create_random_mat(shape, listidx=None):
-    """
-    This function create a random sparse index matrix with a given shape. It
-    is useful to create negative triplets.
-
-    :param shape: shape of the desired sparse matrix.
-    :param listidx: list of index to sample from (default None: it samples from
-                    all shape[0] indexes).
-
-    :note: if shape[1] > shape[0], it loops over the shape[0] indexes.
-    """
-    if listidx is None:
-        listidx = np.arange(shape[0])
-    listidx = listidx[np.random.permutation(len(listidx))]
-    randommat = scipy.sparse.lil_matrix((shape[0], shape[1]),
-            dtype=theano.config.floatX)
-    idx_term = 0
-    for idx_ex in range(shape[1]):
-        if idx_term == len(listidx):
-            idx_term = 0
-        randommat[listidx[idx_term], idx_ex] = 1
-        idx_term += 1
-    return randommat.tocsr()
-
-
 def load_file(path):
     return scipy.sparse.csr_matrix(cPickle.load(open(path)),
             dtype=theano.config.floatX)
 
 
-def convert2idx(spmat):
-    rows, cols = spmat.nonzero()
-    return rows[np.argsort(cols)]
+def compute_prauc(pred, lab):
+    pred = np.asarray(pred)
+    lab = np.asarray(lab)
+
+    order = np.argsort(pred)
+    lab_ordered = lab[order]
+    pred_ordered = pred[order]
+
+    precision = {}
+    recall = {}
+    # All examples are classified 1
+    precision[np.min(pred_ordered) - 1.0] = (np.sum(lab_ordered) /
+            float(len(lab)))
+    recall[np.min(pred_ordered) - 1.0] = 1.
+    for i in range(len(lab)):
+        if len(lab) - i - 1 == 0:
+            # No examples are classified 1
+            precision[pred_ordered[i]] = 1
+        else:
+            precision[pred_ordered[i]] = (np.sum(lab_ordered[i + 1:]) /
+                    float(len(lab) - i - 1))
+        recall[pred_ordered[i]] = (np.sum(lab_ordered[i + 1:]) /
+                float(np.sum(lab_ordered)))
+
+    # Precision-Recall curve points
+    points = []
+    for i in np.sort(precision.keys())[::-1]:
+        points += [(float(recall[i]), float(precision[i]))]
+    # Compute area
+    auc = sum((y0 + y1) / 2. * (x1 - x0) for (x0, y0), (x1, y1) in
+            zip(points[:-1], points[1:]))
+    return auc
 
 
 class DD(dict):
@@ -66,18 +70,17 @@ class DD(dict):
         for k, kv in self.iteritems():
             z[k] = copy.deepcopy(kv, memo)
         return z
-
 # ----------------------------------------------------------------------------
 
 
 # Experiment function --------------------------------------------------------
-def WNexp(state, channel):
+def Tensorexp(state, channel):
 
     # Show experiment parameters
     print >> sys.stderr, state
     np.random.seed(state.seed)
 
-    # Experiment folder
+     # Experiment folder
     if hasattr(channel, 'remote_path'):
         state.savepath = channel.remote_path + '/'
     elif hasattr(channel, 'path'):
@@ -86,38 +89,49 @@ def WNexp(state, channel):
         if not os.path.isdir(state.savepath):
             os.mkdir(state.savepath)
 
-    # Positives
-    trainl = load_file(state.datapath + state.dataset + '-train-lhs.pkl')
-    trainr = load_file(state.datapath + state.dataset + '-train-rhs.pkl')
-    traino = load_file(state.datapath + state.dataset + '-train-rel.pkl')
-    if state.op == 'SE' or state.op == 'GEO':
+     # Positives
+    trainl = load_file(state.datapath + state.dataset +
+            '-train-pos-lhs-fold%s.pkl' % state.fold)
+    trainr = load_file(state.datapath + state.dataset +
+            '-train-pos-rhs-fold%s.pkl' % state.fold)
+    traino = load_file(state.datapath + state.dataset +
+            '-train-pos-rel-fold%s.pkl' % state.fold)
+    if state.op == 'SE' or state.op=='GEO' or state.op == 'GEO2':
         traino = traino[-state.Nrel:, :]
 
+    # Negatives
+    trainln = load_file(state.datapath + state.dataset +
+            '-train-neg-lhs-fold%s.pkl' % state.fold)
+    trainrn = load_file(state.datapath + state.dataset +
+            '-train-neg-rhs-fold%s.pkl' % state.fold)
+    trainon = load_file(state.datapath + state.dataset +
+            '-train-neg-rel-fold%s.pkl' % state.fold)
+    if state.op == 'SE' or state.op=='GEO' or state.op == 'GEO2':
+        trainon = trainon[-state.Nrel:, :]
 
     # Valid set
-    validl = load_file(state.datapath + state.dataset + '-valid-lhs.pkl')
-    validr = load_file(state.datapath + state.dataset + '-valid-rhs.pkl')
-    valido = load_file(state.datapath + state.dataset + '-valid-rel.pkl')
-    if state.op == 'SE'or state.op == 'GEO':
+    validl = load_file(state.datapath + state.dataset +
+            '-valid-lhs-fold%s.pkl' % state.fold)
+    validr = load_file(state.datapath + state.dataset +
+            '-valid-rhs-fold%s.pkl' % state.fold)
+    valido = load_file(state.datapath + state.dataset +
+            '-valid-rel-fold%s.pkl' % state.fold)
+    if state.op == 'SE' or state.op=='GEO' or state.op == 'GEO2':
         valido = valido[-state.Nrel:, :]
+    outvalid = cPickle.load(open(state.datapath +
+        '%s-valid-targets-fold%s.pkl' % (state.dataset, state.fold)))
 
     # Test set
-    testl = load_file(state.datapath + state.dataset + '-test-lhs.pkl')
-    testr = load_file(state.datapath + state.dataset + '-test-rhs.pkl')
-    testo = load_file(state.datapath + state.dataset + '-test-rel.pkl')
-    if state.op == 'SE'or state.op == 'GEO':
+    testl = load_file(state.datapath + state.dataset +
+            '-test-lhs-fold%s.pkl' % state.fold)
+    testr = load_file(state.datapath + state.dataset +
+            '-test-rhs-fold%s.pkl' % state.fold)
+    testo = load_file(state.datapath + state.dataset +
+            '-test-rel-fold%s.pkl' % state.fold)
+    if state.op == 'SE' or state.op=='GEO' or state.op == 'GEO2':
         testo = testo[-state.Nrel:, :]
-
-    # Index conversion
-    trainlidx = convert2idx(trainl)[:state.neval]
-    trainridx = convert2idx(trainr)[:state.neval]
-    trainoidx = convert2idx(traino)[:state.neval]
-    validlidx = convert2idx(validl)[:state.neval]
-    validridx = convert2idx(validr)[:state.neval]
-    validoidx = convert2idx(valido)[:state.neval]
-    testlidx = convert2idx(testl)[:state.neval]
-    testridx = convert2idx(testr)[:state.neval]
-    testoidx = convert2idx(testo)[:state.neval]
+    outtest = cPickle.load(open(state.datapath +
+        '%s-test-targets-fold%s.pkl' % (state.dataset, state.fold)))
 
     # Model declaration
     if not state.loadmodel:
@@ -141,6 +155,9 @@ def WNexp(state, channel):
         elif state.op == 'GEO':
             leftop = LayerdMat()
             rightop = Unstructured()
+        elif state.op == 'GEO2':
+            leftop = LayerMat('lin', state.ndim, state.ndim)
+            rightop = Unstructured()
         # embeddings
         if not state.loademb:
             embeddings = Embeddings(np.random, state.Nent, state.ndim, 'emb')
@@ -154,9 +171,15 @@ def WNexp(state, channel):
             relationr = Embeddings(np.random, state.Nrel,
                     state.ndim * state.nhid, 'relr')
             embeddings = [embeddings, relationl, relationr]
-        if state.op == 'GEO' and type(embeddings) is not list:
+        if state.op == 'GEO'and type(embeddings) is not list:
             relationMat = Embeddings(np.random, state.Nrel,
                     state.ndim, 'relmat')
+            relationVec = Embeddings(np.random, state.Nrel,
+                    state.ndim, 'relvec')
+            embeddings = [embeddings, relationMat, relationVec]
+        if state.op == 'GEO2'and type(embeddings) is not list:
+            relationMat = Embeddings(np.random, state.Nrel,
+                    state.ndim*state.ndim, 'relmat')
             relationVec = Embeddings(np.random, state.Nrel,
                     state.ndim, 'relvec')
             embeddings = [embeddings, relationMat, relationVec]
@@ -169,13 +192,9 @@ def WNexp(state, channel):
         simfn = cPickle.load(f)
         f.close()
 
-    # Function compilation
-    trainfunc = myTrainFn1Member(simfn, embeddings, leftop, rightop,
-            marge=state.marge, rel=False, regparam=state.regparam)
-    ranklfunc = myRankLeftFnIdx(simfn, embeddings, leftop, rightop,
-            subtensorspec=state.Nsyn)
-    rankrfunc = myRankRightFnIdx(simfn, embeddings, leftop, rightop,
-            subtensorspec=state.Nsyn)
+    # Functions compilation
+    trainfunc = myTrainFn(simfn, embeddings, leftop, rightop, marge=state.marge, regparam=state.regparam)
+    testfunc = mySimFn(simfn, embeddings, leftop, rightop)
 
     out = []
     outb = []
@@ -191,23 +210,21 @@ def WNexp(state, channel):
         trainl = trainl[:, order]
         trainr = trainr[:, order]
         traino = traino[:, order]
-            # Negatives
-        trainln = create_random_mat(trainl.shape, np.arange(state.Nsyn))
-        trainrn = create_random_mat(trainr.shape, np.arange(state.Nsyn))
-
-        #trainln = trainln[:, np.random.permutation(trainln.shape[1])]
-        #trainrn = trainrn[:, np.random.permutation(trainrn.shape[1])]
+        order = np.random.permutation(trainln.shape[1])
+        trainln = trainln[:, order]
+        trainrn = trainrn[:, order]
+        trainon = trainon[:, order]
 
         for i in range(state.nbatches):
             tmpl = trainl[:, i * batchsize:(i + 1) * batchsize]
             tmpr = trainr[:, i * batchsize:(i + 1) * batchsize]
             tmpo = traino[:, i * batchsize:(i + 1) * batchsize]
-            tmpnl = trainln[:, i * batchsize:(i + 1) * batchsize]
-            tmpnr = trainrn[:, i * batchsize:(i + 1) * batchsize]
-
+            tmpln = trainln[:, i * batchsize:(i + 1) * batchsize]
+            tmprn = trainrn[:, i * batchsize:(i + 1) * batchsize]
+            tmpon = trainon[:, i * batchsize:(i + 1) * batchsize]
             # training iteration
             outtmp = trainfunc(state.lremb, state.lrparam / float(batchsize),
-                    tmpl, tmpr, tmpo, tmpnl, tmpnr)
+                    tmpl, tmpr, tmpo, tmpln, tmprn, tmpon)
             out += [outtmp[0] / float(batchsize)]
             outb += [outtmp[1]]
             # embeddings normalization
@@ -227,23 +244,16 @@ def WNexp(state, channel):
                     round(np.mean(outb) * 100, 3))
             out = []
             outb = []
-            resvalid = RankingScoreIdx(ranklfunc, rankrfunc,
-                    validlidx, validridx, validoidx)
-            state.valid = np.mean(resvalid[0] + resvalid[1])
-            restrain = RankingScoreIdx(ranklfunc, rankrfunc,
-                    trainlidx, trainridx, trainoidx)
-            state.train = np.mean(restrain[0] + restrain[1])
-            print >> sys.stderr, "\tMEAN RANK >> valid: %s, train: %s" % (
-                    state.valid, state.train)
-            if state.bestvalid == -1 or state.valid < state.bestvalid:
-                restest = RankingScoreIdx(ranklfunc, rankrfunc,
-                        testlidx, testridx, testoidx)
+            valsim = testfunc(validl, validr, valido)[0]
+            state.valid = compute_prauc(valsim, outvalid)
+            print >> sys.stderr, "\tPR AUC >> valid: %s" % (state.valid)
+            if state.bestvalid == -1 or state.valid > state.bestvalid:
+                testsim = testfunc(testl, testr, testo)[0]
+                state.besttest = compute_prauc(testsim, outtest)
                 state.bestvalid = state.valid
-                state.besttrain = state.train
-                state.besttest = np.mean(restest[0] + restest[1])
                 state.bestepoch = epoch_count
                 # Save model best valid model
-                f = open(state.savepath + '/best_valid_model_ndim={}_lr={}_simfn={}_reg={}.pkl'.format(state.ndim, state.lremb, state.simfn, state.regparam), 'w')
+                f = open(state.savepath + '/best_valid_model_dataset={}_ndim={}_lr={}_simfn={}_reg={}.pkl'.format(state.dataset, state.ndim, state.lremb, state.simfn, state.regparam), 'w')
                 cPickle.dump(embeddings, f, -1)
                 cPickle.dump(leftop, f, -1)
                 cPickle.dump(rightop, f, -1)
@@ -252,7 +262,7 @@ def WNexp(state, channel):
                 print >> sys.stderr, "\t\t##### NEW BEST VALID >> test: %s" % (
                         state.besttest)
             # Save current model
-            f = open(state.savepath + '/current_model_ndim={}_lr={}_simfn={}_reg={}.pkl'.format(state.ndim, state.lremb, state.simfn, state.regparam), 'w')
+            f = open(state.savepath + '/current_model_dataset={}_ndim={}_lr={}_simfn={}_reg={}.pkl'.format(state.dataset, state.ndim, state.lremb, state.simfn, state.regparam), 'w')
             cPickle.dump(embeddings, f, -1)
             cPickle.dump(leftop, f, -1)
             cPickle.dump(rightop, f, -1)
@@ -266,19 +276,18 @@ def WNexp(state, channel):
     return channel.COMPLETE
 
 
-def launch(datapath='data/', dataset='WN', Nent=40961,
-        Nsyn=40943, Nrel=18, loadmodel=False, loademb=False, op='Unstructured',
+def launch(datapath='data/', dataset='umls', fold=0, Nent=184,
+        Nrel=49, loadmodel=False, loademb=False, op='Unstructured',
         simfn='Dot', ndim=50, nhid=50, marge=1., lremb=0.1, lrparam=1.,
-        nbatches=100, totepochs=2000, test_all=1, neval=50, seed=666,
-        savepath='.', regparam=0.0):
+        nbatches=100, totepochs=2000, test_all=1, seed=666, savepath='.',regparam=0.0):
 
     # Argument of the experiment script
     state = DD()
 
     state.datapath = datapath
     state.dataset = dataset
+    state.fold = fold
     state.Nent = Nent
-    state.Nsyn = Nsyn
     state.Nrel = Nrel
     state.loadmodel = loadmodel
     state.loademb = loademb
@@ -292,7 +301,6 @@ def launch(datapath='data/', dataset='WN', Nent=40961,
     state.nbatches = nbatches
     state.totepochs = totepochs
     state.test_all = test_all
-    state.neval = neval
     state.seed = seed
     state.savepath = savepath
     state.regparam = regparam
@@ -304,19 +312,19 @@ def launch(datapath='data/', dataset='WN', Nent=40961,
     class Channel(object):
         def __init__(self, state):
             self.state = state
-            f = open(self.state.savepath + '/orig_state_ndim={}_lr={}_simfn={}_reg={}.pkl'.format(state.ndim, state.lremb, state.simfn, state.regparam), 'w')
+            f = open(self.state.savepath + '/orig_state_dataset={}_ndim={}_lr={}_simfn={}_reg={}.pkl'.format(state.dataset, state.ndim, state.lremb, state.simfn, state.regparam), 'w')
             cPickle.dump(self.state, f, -1)
             f.close()
             self.COMPLETE = 1
 
         def save(self):
-            f = open(self.state.savepath + '/current_state_ndim={}_lr={}_simfn={}_reg={}.pkl'.format(state.ndim, state.lremb, state.simfn, state.regparam), 'w')
+            f = open(self.state.savepath + '/current_state_dataset={}_ndim={}_lr={}_simfn={}_reg={}.pkl'.format(state.dataset, state.ndim, state.lremb, state.simfn, state.regparam), 'w')
             cPickle.dump(self.state, f, -1)
             f.close()
 
     channel = Channel(state)
 
-    WNexp(state, channel)
+    Tensorexp(state, channel)
 
 if __name__ == '__main__':
     launch()

@@ -215,4 +215,7 @@ def ClassifEval(datapath='../data/', validset='WN-valid', testset='WN-test',
 
 if __name__ == '__main__':
     #ClassifEval()
-    myRankingEval(loadmodel=sys.argv[1])
+    if len(sys.argv)==2 or sys.argv[2]=='WN':
+        myRankingEval(loadmodel=sys.argv[1])
+    elif sys.argv[2]=='WN2':
+        myRankingEval(dataset='WN2-test',loadmodel=sys.argv[1], idx2synsetfile='WN2_idx2synset.pkl')

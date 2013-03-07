@@ -1,4 +1,4 @@
-import os
+import os, sys
 import cPickle
 
 import numpy
@@ -6,7 +6,7 @@ import scipy.sparse
 
 # Number of folds
 K = 10
-datapath = None
+datapath = sys.argv[1]
 assert datapath is not None
 
 if 'data' not in os.listdir('../'):

@@ -14,16 +14,16 @@ r_mats=embeddings[1].E.get_value()
 r_vecs=embeddings[2].E.get_value()
 
 
-a=cPickle.load(open('../data/WN_idx2synset.pkl'))
-b=cPickle.load(open('../data/WN_synset2concept.pkl'))
+a=cPickle.load(open('../data/WN2_idx2synset.pkl'))
+b=cPickle.load(open('../data/WN2_synset2concept.pkl'))
 
-nbrel=18
+nbrel=11
 new_E={}
 for i in range(len(ents[0])-nbrel):
 	new_E[b[a[i]]]=ents[:,i]
 
 new_R={}
-for i in range(18):
+for i in range(nbrel):
 	new_R[a[i+len(ents[0])-nbrel]]=[r_mats[:,i],r_vecs[:,i]]
 
 
@@ -35,6 +35,14 @@ def closest(entity, k=10, rel=None, repeat=1):
 		dists = sorted((np.sum(np.abs(v-vect1)), e) for e,v in new_E.iteritems())
 	else:
 		dists = sorted((np.sum(np.abs(new_R[rel][0] *(v-vect1)-new_R[rel][1])), e) for e,v in new_E.iteritems())
+	return [e for norm, e in dists[:k]]
+
+def closest2(entity, k=10, rel=None, repeat=1):
+	vect1 = new_E[entity]
+	if rel is None:
+		dists = sorted((np.sum(np.abs(vect1-v)), e) for e,v in new_E.iteritems())
+	else:
+		dists = sorted((np.sum(np.abs(new_R[rel][0] *(vect1-v)-new_R[rel][1])), e) for e,v in new_E.iteritems())
 	return [e for norm, e in dists[:k]]
 
 def find_entity(name):
