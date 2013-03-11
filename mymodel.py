@@ -36,6 +36,9 @@ def reg_margincost(pos, neg, rmat, marge=1.0, regparam=0.0):
     out = neg - pos + marge
     return T.sum(out * (out > 0)) + regparam * T.sum((rmat - 1) ** 2), out > 0
 
+def reg_margincost2(pos, neg, rmat, lhs, rhs, marge=1.0, regparam=0.0):
+    out = neg - pos + marge
+    return T.sum(out * (out > 0)) + regparam * (T.sum((lhs) ** 2) + T.sum((rhs) ** 2)), out > 0
 
 def margincost(pos, neg, marge=1.0):
     out = neg - pos + marge
@@ -196,6 +199,36 @@ class LayerMat(object):
 
         return self.act((rx * ry).sum(1))
 
+class Layerr1Mat(object):
+    """
+    Class for a layer with two input vectors, the 'right' member being a flat
+    representation of a matrix on which to perform the dot product with the
+    'left' vector [Structured Embeddings model, Bordes et al. AAAI 2011].
+    """
+
+    def __init__(self, act, n_inp):
+        """
+        Constructor.
+
+        :param act: name of the activation function ('lin', 'rect', 'tanh' or
+                    'sigm').
+        :param n_inp: input dimension.
+        :param n_out: output dimension.
+
+        :note: there is no parameter declared in this layer, the parameters
+               are the embeddings of the 'right' member, therefore their
+               dimension have to fit with those declared here: n_inp * n_out.
+        """
+        self.act = eval(act)
+        self.actstr = act
+        self.n_inp = n_inp
+        self.params = []
+
+    def __call__(self, x, y):
+        """Forward function."""
+        # More details on the class and constructor comments.
+        ry = T.outer(y[:,:self.n_inp],y[:,self.n_inp])
+        return self.act(ry.dot(x))
 
 class LayerdMat(object):
     """
@@ -975,6 +1008,7 @@ def myTrainFn(fnsim, embeddings, leftop, rightop, marge=1.0, regparam=0.0):
     simin = fnsim(leftop((rhsn-lhsn), relmatn), rightop(relvecn,relvecn))
 
     cost, out = reg_margincost(simi, simin, relmat, marge, regparam)
+    #cost, out = reg_margincost2(simi, simin, relmat, lhs, rhs, marge, regparam)
 
     # Parameters gradients
     if hasattr(fnsim, 'params'):

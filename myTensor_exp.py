@@ -96,7 +96,7 @@ def Tensorexp(state, channel):
             '-train-pos-rhs-fold%s.pkl' % state.fold)
     traino = load_file(state.datapath + state.dataset +
             '-train-pos-rel-fold%s.pkl' % state.fold)
-    if state.op == 'SE' or state.op=='GEO' or state.op == 'GEO2':
+    if state.op == 'SE' or state.op == 'SE2' or state.op=='GEO' or state.op == 'GEO2':
         traino = traino[-state.Nrel:, :]
 
     # Negatives
@@ -106,7 +106,7 @@ def Tensorexp(state, channel):
             '-train-neg-rhs-fold%s.pkl' % state.fold)
     trainon = load_file(state.datapath + state.dataset +
             '-train-neg-rel-fold%s.pkl' % state.fold)
-    if state.op == 'SE' or state.op=='GEO' or state.op == 'GEO2':
+    if state.op == 'SE' or state.op == 'SE2' or state.op=='GEO' or state.op == 'GEO2':
         trainon = trainon[-state.Nrel:, :]
 
     # Valid set
@@ -116,7 +116,7 @@ def Tensorexp(state, channel):
             '-valid-rhs-fold%s.pkl' % state.fold)
     valido = load_file(state.datapath + state.dataset +
             '-valid-rel-fold%s.pkl' % state.fold)
-    if state.op == 'SE' or state.op=='GEO' or state.op == 'GEO2':
+    if state.op == 'SE' or state.op == 'SE2' or state.op=='GEO' or state.op == 'GEO2':
         valido = valido[-state.Nrel:, :]
     outvalid = cPickle.load(open(state.datapath +
         '%s-valid-targets-fold%s.pkl' % (state.dataset, state.fold)))
@@ -128,7 +128,7 @@ def Tensorexp(state, channel):
             '-test-rhs-fold%s.pkl' % state.fold)
     testo = load_file(state.datapath + state.dataset +
             '-test-rel-fold%s.pkl' % state.fold)
-    if state.op == 'SE' or state.op=='GEO' or state.op == 'GEO2':
+    if state.op == 'SE' or state.op == 'SE2' or state.op=='GEO' or state.op == 'GEO2':
         testo = testo[-state.Nrel:, :]
     outtest = cPickle.load(open(state.datapath +
         '%s-test-targets-fold%s.pkl' % (state.dataset, state.fold)))
@@ -152,6 +152,9 @@ def Tensorexp(state, channel):
         elif state.op == 'SE':
             leftop = LayerMat('lin', state.ndim, state.nhid)
             rightop = LayerMat('lin', state.ndim, state.nhid)
+        elif state.op == 'SE2':
+            leftop = LayerdMat()
+            rightop = LayerdMat()
         elif state.op == 'GEO':
             leftop = LayerdMat()
             rightop = Unstructured()
@@ -170,6 +173,12 @@ def Tensorexp(state, channel):
                     state.ndim * state.nhid, 'rell')
             relationr = Embeddings(np.random, state.Nrel,
                     state.ndim * state.nhid, 'relr')
+            embeddings = [embeddings, relationl, relationr]
+        if state.op == 'SE2' and type(embeddings) is not list:
+            relationl = Embeddings(np.random, state.Nrel,
+                    state.ndim, 'rell')
+            relationr = Embeddings(np.random, state.Nrel,
+                    state.ndim, 'relr')
             embeddings = [embeddings, relationl, relationr]
         if state.op == 'GEO'and type(embeddings) is not list:
             relationMat = Embeddings(np.random, state.Nrel,
@@ -193,8 +202,13 @@ def Tensorexp(state, channel):
         f.close()
 
     # Functions compilation
-    trainfunc = myTrainFn(simfn, embeddings, leftop, rightop, marge=state.marge, regparam=state.regparam)
-    testfunc = mySimFn(simfn, embeddings, leftop, rightop)
+
+    trainfunc = TrainFn(simfn, embeddings, leftop, rightop, marge=state.marge)
+    testfunc = SimFn(simfn, embeddings, leftop, rightop)
+    if state.op=='GEO' or state.op=='GEO2':
+        trainfunc = myTrainFn(simfn, embeddings, leftop, rightop, marge=state.marge, regparam=state.regparam)
+        testfunc = mySimFn(simfn, embeddings, leftop, rightop)
+
 
     out = []
     outb = []
