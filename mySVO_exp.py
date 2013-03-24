@@ -175,11 +175,14 @@ def SVOexp(state, channel):
 #    rankrelfunc = myRankRelFnIdx(simfn, embeddings, leftop, rightop)
 
     trainfunc = myTrainFn1Member(simfn, embeddings, leftop, rightop,
-            marge=state.marge, rel=False, regparam=state.regparam)
-    ranklfunc = myRankLeftFnIdx(simfn, embeddings, leftop, rightop,
-            subtensorspec=state.Nsyn)
-    rankrfunc = myRankRightFnIdx(simfn, embeddings, leftop, rightop,
-            subtensorspec=state.Nsyn)
+            marge=state.marge, rel=True, regparam=state.regparam)
+    # ranklfunc = myRankLeftFnIdx(simfn, embeddings, leftop, rightop,
+    #         subtensorspec=state.Nsyn)
+    # rankrfunc = myRankRightFnIdx(simfn, embeddings, leftop, rightop,
+    #         subtensorspec=state.Nsyn)
+
+    rankrelfunc = myRankRelFnIdx(simfn, embeddings, leftop, rightop)
+
 
     out = []
     outb = []
@@ -199,6 +202,8 @@ def SVOexp(state, channel):
         # Negatives
         trainln = create_random_mat(trainl.shape, np.arange(state.Nsyn))
         trainrn = create_random_mat(trainr.shape, np.arange(state.Nsyn))
+        trainon = create_random_mat(traino.shape, np.arange(state.Nrel))
+
 
         #trainln = trainln[:, np.random.permutation(trainln.shape[1])]
         #trainrn = trainrn[:, np.random.permutation(trainrn.shape[1])]
@@ -209,10 +214,12 @@ def SVOexp(state, channel):
             tmpo = traino[:, i * batchsize:(i + 1) * batchsize]
             tmpnl = trainln[:, i * batchsize:(i + 1) * batchsize]
             tmpnr = trainrn[:, i * batchsize:(i + 1) * batchsize]
+            tmpno = trainon[:, i * batchsize:(i + 1) * batchsize]
+
 
             # training iteration
             outtmp = trainfunc(state.lremb, state.lrparam / float(batchsize),
-                    tmpl, tmpr, tmpo, tmpnl, tmpnr)
+                    tmpl, tmpr, tmpo, tmpnl, tmpnr, tmpno)
             out += [outtmp[0] / float(batchsize)]
             outb += [outtmp[1]]
             # embeddings normalization
@@ -232,23 +239,25 @@ def SVOexp(state, channel):
                     round(np.mean(outb) * 100, 3))
             out = []
             outb = []
-#            resvalid = RankingScoreRelIdx(rankrelfunc, validlidx, validridx, validoidx)
-            resvalid = RankingScoreIdx(ranklfunc, rankrfunc,
-                    validlidx, validridx, validoidx)
-            state.valid = np.mean(resvalid[0] + resvalid[1])
-#            restrain = RankingScoreRelIdx(rankrelfunc, trainlidx, trainridx, trainoidx)
-            restrain = RankingScoreIdx(ranklfunc, rankrfunc,
-                    trainlidx, trainridx, trainoidx)
-            state.train = np.mean(restrain[0] + restrain[1])
+#            resvalid = RankingScoreIdx(ranklfunc, rankrfunc, validlidx, validridx, validoidx)
+#            state.valid = np.mean(resvalid[0] + resvalid[1])
+            resvalid = RankingScoreRelIdx(rankrelfunc, validlidx, validridx, validoidx)
+            state.valid = np.mean(resvalid)
+
+            # restrain = RankingScoreIdx(ranklfunc, rankrfunc,trainlidx, trainridx, trainoidx)
+            # state.train = np.mean(restrain[0] + restrain[1])
+            restrain = RankingScoreRelIdx(rankrelfunc, trainlidx, trainridx, trainoidx)
+            state.train = np.mean(restrain)
+
             print >> sys.stderr, "\tMEAN RANK >> valid: %s, train: %s" % (
                     state.valid, state.train)
             if state.bestvalid == -1 or state.valid < state.bestvalid:
-                restest = RankingScoreIdx(ranklfunc, rankrfunc,
-                        testlidx, testridx, testoidx)
-#                restest = RankingScoreRelIdx(rankrelfunc, testlidx, testridx, testoidx)
+#                restest = RankingScoreIdx(ranklfunc, rankrfunc, testlidx, testridx, testoidx)
+#                state.besttest = np.mean(restest[0] + restest[1])
+                restest = RankingScoreRelIdx(rankrelfunc, testlidx, testridx, testoidx)
+                state.besttest = np.mean(restest)
                 state.bestvalid = state.valid
                 state.besttrain = state.train
-                state.besttest = np.mean(restest[0] + restest[1])
                 state.bestepoch = epoch_count
                 # Save model best valid model
                 f = open(state.savepath + '/best_valid_model_nhid={}_lr={}_simfn={}_reg={}.pkl'.format(state.ndim, state.lremb, state.simfn, state.regparam), 'w')
