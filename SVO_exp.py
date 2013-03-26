@@ -1,6 +1,6 @@
 #! /usr/bin/python
 
-from model import *
+from mymodel import *
 
 
 # Utils ----------------------------------------------------------------------
@@ -90,25 +90,22 @@ def SVOexp(state, channel):
     trainl = load_file(state.datapath + state.dataset + '-train-lhs.pkl')
     trainr = load_file(state.datapath + state.dataset + '-train-rhs.pkl')
     traino = load_file(state.datapath + state.dataset + '-train-rel.pkl')
-    if state.op == 'SE':
+    if state.op == 'SE' or state.op == 'GEO':
         traino = traino[-state.Nrel:, :]
 
-    # Negatives
-    trainln = create_random_mat(trainl.shape, np.arange(state.Nsyn))
-    trainrn = create_random_mat(trainr.shape, np.arange(state.Nsyn))
 
     # Valid set
     validl = load_file(state.datapath + state.dataset + '-valid-lhs.pkl')
     validr = load_file(state.datapath + state.dataset + '-valid-rhs.pkl')
     valido = load_file(state.datapath + state.dataset + '-valid-rel.pkl')
-    if state.op == 'SE':
+    if state.op == 'SE'or state.op == 'GEO':
         valido = valido[-state.Nrel:, :]
 
     # Test set
     testl = load_file(state.datapath + state.dataset + '-test-lhs.pkl')
     testr = load_file(state.datapath + state.dataset + '-test-rhs.pkl')
     testo = load_file(state.datapath + state.dataset + '-test-rel.pkl')
-    if state.op == 'SE':
+    if state.op == 'SE'or state.op == 'GEO':
         testo = testo[-state.Nrel:, :]
 
     # Index conversion
@@ -141,6 +138,9 @@ def SVOexp(state, channel):
         elif state.op == 'SE':
             leftop = LayerMat('lin', state.ndim, state.nhid)
             rightop = LayerMat('lin', state.ndim, state.nhid)
+        elif state.op == 'GEO':
+            leftop = LayerdMat()
+            rightop = Unstructured()
         # embeddings
         if not state.loademb:
             embeddings = Embeddings(np.random, state.Nent, state.ndim, 'emb')
@@ -154,6 +154,12 @@ def SVOexp(state, channel):
             relationr = Embeddings(np.random, state.Nrel,
                     state.ndim * state.nhid, 'relr')
             embeddings = [embeddings, relationl, relationr]
+        if state.op == 'GEO' and type(embeddings) is not list:
+            relationMat = Embeddings(np.random, state.Nrel,
+                    state.ndim, 'relmat')
+            relationVec = Embeddings(np.random, state.Nrel,
+                    state.ndim, 'relvec')
+            embeddings = [embeddings, relationMat, relationVec]
         simfn = eval(state.simfn + 'sim')
     else:
         f = open(state.loadmodel)
@@ -164,12 +170,19 @@ def SVOexp(state, channel):
         f.close()
 
     # Function compilation
+#    trainfunc = myTrainFn1Member_relonly(simfn, embeddings, leftop, rightop,
+#            marge=state.marge, regparam=state.regparam)
+#    rankrelfunc = myRankRelFnIdx(simfn, embeddings, leftop, rightop)
+
     trainfunc = TrainFn1Member(simfn, embeddings, leftop, rightop,
-            marge=state.marge, rel=False)
-    ranklfunc = RankLeftFnIdx(simfn, embeddings, leftop, rightop,
-            subtensorspec=state.Nsyn)
-    rankrfunc = RankRightFnIdx(simfn, embeddings, leftop, rightop,
-            subtensorspec=state.Nsyn)
+            marge=state.marge, rel=True)
+    # ranklfunc = myRankLeftFnIdx(simfn, embeddings, leftop, rightop,
+    #         subtensorspec=state.Nsyn)
+    # rankrfunc = myRankRightFnIdx(simfn, embeddings, leftop, rightop,
+    #         subtensorspec=state.Nsyn)
+
+    rankrelfunc = RankRelFnIdx(simfn, embeddings, leftop, rightop, subtensorspec=state.Nsyn)
+
 
     out = []
     outb = []
@@ -185,8 +198,15 @@ def SVOexp(state, channel):
         trainl = trainl[:, order]
         trainr = trainr[:, order]
         traino = traino[:, order]
-        trainln = trainln[:, np.random.permutation(trainln.shape[1])]
-        trainrn = trainrn[:, np.random.permutation(trainrn.shape[1])]
+
+        # Negatives
+        trainln = create_random_mat(trainl.shape, np.arange(state.Nsyn))
+        trainrn = create_random_mat(trainr.shape, np.arange(state.Nsyn))
+        trainon = create_random_mat(traino.shape, np.arange(state.Nsyn,state.Nent))
+
+
+        #trainln = trainln[:, np.random.permutation(trainln.shape[1])]
+        #trainrn = trainrn[:, np.random.permutation(trainrn.shape[1])]
 
         for i in range(state.nbatches):
             tmpl = trainl[:, i * batchsize:(i + 1) * batchsize]
@@ -194,9 +214,12 @@ def SVOexp(state, channel):
             tmpo = traino[:, i * batchsize:(i + 1) * batchsize]
             tmpnl = trainln[:, i * batchsize:(i + 1) * batchsize]
             tmpnr = trainrn[:, i * batchsize:(i + 1) * batchsize]
+            tmpno = trainon[:, i * batchsize:(i + 1) * batchsize]
+
+
             # training iteration
             outtmp = trainfunc(state.lremb, state.lrparam / float(batchsize),
-                    tmpl, tmpr, tmpo, tmpnl, tmpnr)
+                    tmpl, tmpr, tmpo, tmpnl, tmpnr, tmpno)
             out += [outtmp[0] / float(batchsize)]
             outb += [outtmp[1]]
             # embeddings normalization
@@ -216,23 +239,28 @@ def SVOexp(state, channel):
                     round(np.mean(outb) * 100, 3))
             out = []
             outb = []
-            resvalid = RankingScoreIdx(ranklfunc, rankrfunc,
-                    validlidx, validridx, validoidx)
-            state.valid = np.mean(resvalid[0] + resvalid[1])
-            restrain = RankingScoreIdx(ranklfunc, rankrfunc,
-                    trainlidx, trainridx, trainoidx)
-            state.train = np.mean(restrain[0] + restrain[1])
+#            resvalid = RankingScoreIdx(ranklfunc, rankrfunc, validlidx, validridx, validoidx)
+#            state.valid = np.mean(resvalid[0] + resvalid[1])
+            resvalid = RankingScoreRelIdx(rankrelfunc, validlidx, validridx, validoidx, state.Nsyn)
+            state.valid = np.mean(resvalid)
+
+            # restrain = RankingScoreIdx(ranklfunc, rankrfunc,trainlidx, trainridx, trainoidx)
+            # state.train = np.mean(restrain[0] + restrain[1])
+            restrain = RankingScoreRelIdx(rankrelfunc, trainlidx, trainridx, trainoidx, state.Nsyn)
+            state.train = np.mean(restrain)
+
             print >> sys.stderr, "\tMEAN RANK >> valid: %s, train: %s" % (
                     state.valid, state.train)
             if state.bestvalid == -1 or state.valid < state.bestvalid:
-                restest = RankingScoreIdx(ranklfunc, rankrfunc,
-                        testlidx, testridx, testoidx)
+#                restest = RankingScoreIdx(ranklfunc, rankrfunc, testlidx, testridx, testoidx)
+#                state.besttest = np.mean(restest[0] + restest[1])
+                restest = RankingScoreRelIdx(rankrelfunc, testlidx, testridx, testoidx, state.Nsyn)
+                state.besttest = np.mean(restest)
                 state.bestvalid = state.valid
                 state.besttrain = state.train
-                state.besttest = np.mean(restest[0] + restest[1])
                 state.bestepoch = epoch_count
                 # Save model best valid model
-                f = open(state.savepath + '/best_valid_model.pkl', 'w')
+                f = open(state.savepath + '/best_valid_model_nhid={}_lr={}_simfn={}_reg={}.pkl'.format(state.ndim, state.lremb, state.simfn, state.regparam), 'w')
                 cPickle.dump(embeddings, f, -1)
                 cPickle.dump(leftop, f, -1)
                 cPickle.dump(rightop, f, -1)
@@ -241,7 +269,7 @@ def SVOexp(state, channel):
                 print >> sys.stderr, "\t\t##### NEW BEST VALID >> test: %s" % (
                         state.besttest)
             # Save current model
-            f = open(state.savepath + '/current_model.pkl', 'w')
+            f = open(state.savepath + '/current_model_nhid={}_lr={}_simfn={}_reg={}.pkl'.format(state.ndim, state.lremb, state.simfn, state.regparam), 'w')
             cPickle.dump(embeddings, f, -1)
             cPickle.dump(leftop, f, -1)
             cPickle.dump(rightop, f, -1)
@@ -258,8 +286,8 @@ def SVOexp(state, channel):
 def launch(datapath='data/', dataset='SVO', Nent=35152,
         Nsyn=30605, Nrel=4547, loadmodel=False, loademb=False, op='Unstructured',
         simfn='Dot', ndim=50, nhid=50, marge=1., lremb=0.1, lrparam=1.,
-        nbatches=100, totepochs=2000, test_all=1, neval=50, seed=666,
-        savepath='.'):
+        nbatches=100, totepochs=2000, test_all=1, neval=500, seed=666,
+        savepath='.', regparam=0.0):
 
     # Argument of the experiment script
     state = DD()
@@ -284,6 +312,7 @@ def launch(datapath='data/', dataset='SVO', Nent=35152,
     state.neval = neval
     state.seed = seed
     state.savepath = savepath
+    state.regparam = regparam
 
     if not os.path.isdir(state.savepath):
         os.mkdir(state.savepath)
@@ -292,13 +321,13 @@ def launch(datapath='data/', dataset='SVO', Nent=35152,
     class Channel(object):
         def __init__(self, state):
             self.state = state
-            f = open(self.state.savepath + '/orig_state.pkl', 'w')
+            f = open(self.state.savepath + '/orig_state_nhid={}_lr={}_simfn={}_reg={}.pkl'.format(state.ndim, state.lremb, state.simfn, state.regparam), 'w')
             cPickle.dump(self.state, f, -1)
             f.close()
             self.COMPLETE = 1
 
         def save(self):
-            f = open(self.state.savepath + '/current_state.pkl', 'w')
+            f = open(self.state.savepath + '/current_state_nhid={}_lr={}_simfn={}_reg={}.pkl'.format(state.ndim, state.lremb, state.simfn, state.regparam), 'w')
             cPickle.dump(self.state, f, -1)
             f.close()
 

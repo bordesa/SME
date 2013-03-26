@@ -241,12 +241,12 @@ def SVOexp(state, channel):
             outb = []
 #            resvalid = RankingScoreIdx(ranklfunc, rankrfunc, validlidx, validridx, validoidx)
 #            state.valid = np.mean(resvalid[0] + resvalid[1])
-            resvalid = RankingScoreRelIdx(rankrelfunc, validlidx, validridx, validoidx)
+            resvalid = myRankingScoreRelIdx(rankrelfunc, validlidx, validridx, validoidx)
             state.valid = np.mean(resvalid)
 
             # restrain = RankingScoreIdx(ranklfunc, rankrfunc,trainlidx, trainridx, trainoidx)
             # state.train = np.mean(restrain[0] + restrain[1])
-            restrain = RankingScoreRelIdx(rankrelfunc, trainlidx, trainridx, trainoidx)
+            restrain = myRankingScoreRelIdx(rankrelfunc, trainlidx, trainridx, trainoidx)
             state.train = np.mean(restrain)
 
             print >> sys.stderr, "\tMEAN RANK >> valid: %s, train: %s" % (
@@ -254,7 +254,7 @@ def SVOexp(state, channel):
             if state.bestvalid == -1 or state.valid < state.bestvalid:
 #                restest = RankingScoreIdx(ranklfunc, rankrfunc, testlidx, testridx, testoidx)
 #                state.besttest = np.mean(restest[0] + restest[1])
-                restest = RankingScoreRelIdx(rankrelfunc, testlidx, testridx, testoidx)
+                restest = myRankingScoreRelIdx(rankrelfunc, testlidx, testridx, testoidx)
                 state.besttest = np.mean(restest)
                 state.bestvalid = state.valid
                 state.besttrain = state.train
