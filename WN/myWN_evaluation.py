@@ -14,7 +14,7 @@ def convert2idx(spmat):
 
 
 def myRankingEval(datapath='../data/', dataset='WN-test',
-        loadmodel='best_valid_model.pkl', neval='all', Nsyn=40943, n=100,
+        loadmodel='best_valid_model.pkl', neval='all', Nsyn=40943, n=10,
         idx2synsetfile='WN_idx2synset.pkl'):
 
     # Load model
@@ -60,6 +60,8 @@ def myRankingEval(datapath='../data/', dataset='WN-test',
     dres.update({'microgmedian': np.median(resg)})
     dres.update({'microgr@n': np.mean(np.asarray(resg) <= n) * 100})
 
+    txt='\t \tmean\tmedian\tp@%s\n'%(n)
+
     print "### MICRO:"
     print "\t-- left   >> mean: %s, median: %s, r@%s: %s%%" % (
             round(dres['microlmean'], 5), round(dres['microlmedian'], 5),
@@ -70,6 +72,9 @@ def myRankingEval(datapath='../data/', dataset='WN-test',
     print "\t-- global >> mean: %s, median: %s, r@%s: %s%%" % (
             round(dres['microgmean'], 5), round(dres['microgmedian'], 5),
             n, round(dres['microgr@n'], 3))
+
+    txt+='micro:\t%s\t%s\t%s\n'%(round(dres['microgmean'], 5), round(dres['microgmedian'], 5),round(dres['microgr@n']/n, 3))
+
 
     listrel = set(idxo)
     dictrelres = {}
@@ -125,6 +130,9 @@ def myRankingEval(datapath='../data/', dataset='WN-test',
     dres.update({'macrogmedian': np.mean(dictrelgmedian.values())})
     dres.update({'macrogr@n': np.mean(dictrelgrn.values())})
 
+
+
+
     print "### MACRO:"
     print "\t-- left   >> mean: %s, median: %s, r@%s: %s%%" % (
             round(dres['macrolmean'], 5), round(dres['macrolmedian'], 5),
@@ -136,6 +144,7 @@ def myRankingEval(datapath='../data/', dataset='WN-test',
             round(dres['macrogmean'], 5), round(dres['macrogmedian'], 5),
             n, round(dres['macrogr@n'], 3))
 
+    txt+='macro:\t%s\t%s\t%s\n'%(round(dres['macrogmean'], 5), round(dres['macrogmedian'], 5),round(dres['macrogr@n']/n, 3))
     idx2synset = cPickle.load(open(datapath + idx2synsetfile))
     offset = 0
     if type(embeddings) is list:
@@ -153,6 +162,9 @@ def myRankingEval(datapath='../data/', dataset='WN-test',
                 round(dictrelgmean[i], 5), round(dictrelgmedian[i], 5),
                 n, round(dictrelgrn[i], 3),
                 len(dictrelres[i][0] + dictrelres[i][1]))
+        txt+='rel_%s:\t%s\t%s\t%s\n'%(idx2synset[offset + i], round(dictrellmean[i], 5), round(dictrellmedian[i], 5), round(dictrellrn[i], 3)/n)
+
+    print txt
 
     return dres
 
@@ -216,6 +228,9 @@ def ClassifEval(datapath='../data/', validset='WN-valid', testset='WN-test',
 if __name__ == '__main__':
     #ClassifEval()
     if len(sys.argv)==2 or sys.argv[2]=='WN':
+        print 'TEST'
         myRankingEval(loadmodel=sys.argv[1])
+        print 'TRAIN'
+        myRankingEval(dataset='WN-train',loadmodel=sys.argv[1], idx2synsetfile='WN_idx2synset.pkl', neval=5000)
     elif sys.argv[2]=='WN2':
         myRankingEval(dataset='WN2-test',loadmodel=sys.argv[1], idx2synsetfile='WN2_idx2synset.pkl')

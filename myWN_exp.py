@@ -90,7 +90,7 @@ def WNexp(state, channel):
     trainl = load_file(state.datapath + state.dataset + '-train-lhs.pkl')
     trainr = load_file(state.datapath + state.dataset + '-train-rhs.pkl')
     traino = load_file(state.datapath + state.dataset + '-train-rel.pkl')
-    if state.op == 'SE' or state.op == 'GEO':
+    if state.op == 'SE' or state.op == 'GEO' or state.op == 'GEO2':
         traino = traino[-state.Nrel:, :]
 
 
@@ -98,14 +98,14 @@ def WNexp(state, channel):
     validl = load_file(state.datapath + state.dataset + '-valid-lhs.pkl')
     validr = load_file(state.datapath + state.dataset + '-valid-rhs.pkl')
     valido = load_file(state.datapath + state.dataset + '-valid-rel.pkl')
-    if state.op == 'SE'or state.op == 'GEO':
+    if state.op == 'SE'or state.op == 'GEO' or state.op == 'GEO2':
         valido = valido[-state.Nrel:, :]
 
     # Test set
     testl = load_file(state.datapath + state.dataset + '-test-lhs.pkl')
     testr = load_file(state.datapath + state.dataset + '-test-rhs.pkl')
     testo = load_file(state.datapath + state.dataset + '-test-rel.pkl')
-    if state.op == 'SE'or state.op == 'GEO':
+    if state.op == 'SE'or state.op == 'GEO' or state.op == 'GEO2':
         testo = testo[-state.Nrel:, :]
 
     # Index conversion
@@ -141,6 +141,9 @@ def WNexp(state, channel):
         elif state.op == 'GEO':
             leftop = LayerdMat()
             rightop = Unstructured()
+        elif state.op == 'GEO2':
+            leftop = Unstructured()
+            rightop = Unstructured()
         # embeddings
         if not state.loademb:
             embeddings = Embeddings(np.random, state.Nent, state.ndim, 'emb')
@@ -155,6 +158,12 @@ def WNexp(state, channel):
                     state.ndim * state.nhid, 'relr')
             embeddings = [embeddings, relationl, relationr]
         if state.op == 'GEO' and type(embeddings) is not list:
+            relationMat = Embeddings(np.random, state.Nrel,
+                    state.ndim, 'relmat')
+            relationVec = Embeddings(np.random, state.Nrel,
+                    state.ndim, 'relvec')
+            embeddings = [embeddings, relationMat, relationVec]
+        if state.op == 'GEO2' and type(embeddings) is not list:
             relationMat = Embeddings(np.random, state.Nrel,
                     state.ndim, 'relmat')
             relationVec = Embeddings(np.random, state.Nrel,

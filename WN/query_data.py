@@ -14,10 +14,10 @@ r_mats=embeddings[1].E.get_value()
 r_vecs=embeddings[2].E.get_value()
 
 
-a=cPickle.load(open('../data/WN2_idx2synset.pkl'))
-b=cPickle.load(open('../data/WN2_synset2concept.pkl'))
+a=cPickle.load(open('../data/WN_idx2synset.pkl'))
+b=cPickle.load(open('../data/WN_synset2concept.pkl'))
 
-nbrel=11
+nbrel=18
 new_E={}
 for i in range(len(ents[0])-nbrel):
 	new_E[b[a[i]]]=ents[:,i]
